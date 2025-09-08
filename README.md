@@ -7,6 +7,8 @@
 
 Transform any YouTube video into a searchable transcript with AI-powered summaries, search functionality, and intelligent chat. Perfect for research, content creation, and learning.
 
+🚀 **[Live Demo: https://ytbe.ai](https://ytbe.ai)**
+
 ## ✨ Features
 
 - **📝 Instant Transcription** - Get accurate transcripts from any YouTube video
@@ -22,7 +24,7 @@ Transform any YouTube video into a searchable transcript with AI-powered summari
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/deniskoblya/ytbe.git
    cd ytbe
    ```
 
@@ -147,7 +149,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## 🆘 Support
 
-Having issues? Check out our [Issues](https://github.com/your-username/ytbe/issues) page or create a new issue.
+Having issues? Check out our [Issues](https://github.com/deniskoblya/ytbe/issues) page or create a new issue.
 
 ## 🙏 Acknowledgments
 

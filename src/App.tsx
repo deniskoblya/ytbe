@@ -465,7 +465,7 @@ Brief explanation of second key pattern or insight`
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
             >
               <Brain size={16} />
-              {apiKey ? 'Изменить API ключ' : 'Настроить OpenAI API'}
+              {apiKey ? 'Change API Key' : 'Setup OpenAI API'}
             </button>
           </div>
         </div>
@@ -832,6 +832,20 @@ Brief explanation of second key pattern or insight`
         onClose={() => setShowApiKeyModal(false)}
         onSave={saveApiKey}
       />
+      
+      <footer className="bg-white border-t py-4 text-center text-sm text-gray-500">
+        <p>
+          Made with ❤️ by{' '}
+          <a 
+            href="https://github.com/deniskoblya/ytbe" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            Denis Koblya
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
@@ -960,24 +974,24 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }: { isOpen: boolean; onClose: ()
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50" />
         <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-lg shadow-xl p-6">
-          <Dialog.Title className="text-xl font-semibold mb-4">Настройка OpenAI API</Dialog.Title>
+          <Dialog.Title className="text-xl font-semibold mb-4">OpenAI API Setup</Dialog.Title>
           
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-medium text-blue-800 mb-2">🔐 Конфиденциальность</h3>
+              <h3 className="font-medium text-blue-800 mb-2">🔐 Privacy</h3>
               <p className="text-sm text-blue-700">
-                Мы не сохраняем ваши API ключи или информацию о видео на наших серверах. 
-                Все данные хранятся локально в вашем браузере.
+                We don't store your API keys or video information on our servers. 
+                All data is stored locally in your browser.
               </p>
             </div>
 
             <div className="bg-gray-50 border rounded-lg p-4">
-              <h3 className="font-medium text-gray-800 mb-2">📝 Как получить API ключ:</h3>
+              <h3 className="font-medium text-gray-800 mb-2">📝 How to get your API key:</h3>
               <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-                <li>Перейдите на <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">platform.openai.com/api-keys</a></li>
-                <li>Войдите в свой аккаунт OpenAI</li>
-                <li>Нажмите "Create new secret key"</li>
-                <li>Скопируйте ключ и вставьте его ниже</li>
+                <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">platform.openai.com/api-keys</a></li>
+                <li>Sign in to your OpenAI account</li>
+                <li>Click "Create new secret key"</li>
+                <li>Copy the key and paste it below</li>
               </ol>
             </div>
 
@@ -1002,13 +1016,13 @@ const ApiKeyModal = ({ isOpen, onClose, onSave }: { isOpen: boolean; onClose: ()
                 disabled={!key.trim()}
                 className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
-                Сохранить
+                Save
               </button>
               <button
                 onClick={onClose}
                 className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
-                Отмена
+                Cancel
               </button>
             </div>
           </div>
