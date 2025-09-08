@@ -30,7 +30,8 @@ const t = {
 
 interface TranscriptChunk {
   text: string;
-  timestamp: [number, number];
+  start: number;
+  duration: number;
 }
 
 interface VideoData {
@@ -42,7 +43,7 @@ interface VideoData {
 type Language = 'en' | 'ru';
 
 const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'dummy-key',
   dangerouslyAllowBrowser: true
 });
 
@@ -66,6 +67,8 @@ function App() {
   const [selectedSummaryLanguage, setSelectedSummaryLanguage] = useState<Language>('en');
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
+  const [apiKey, setApiKey] = useState<string>('');
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   // Initialize t with the default translations and ensure it always has a value
   const translations_t = React.useMemo(() => {
@@ -102,7 +105,7 @@ function App() {
 
     if (viewMode === 'time') {
       content = transcript
-        .map(chunk => `[${formatTime(chunk.timestamp[0])} - ${formatTime(chunk.timestamp[1])}] ${chunk.text}`)
+        .map(chunk => `[${formatTime(chunk.start)} - ${formatTime(chunk.start + chunk.duration)}] ${chunk.text}`)
         .join('\n');
       filename = 'transcript-with-timestamps.txt';
     } else {
@@ -121,13 +124,54 @@ function App() {
   useEffect(() => {
     const saved = localStorage.getItem('savedVideos');
     if (saved) {
-      setSavedVideos(JSON.parse(saved));
+      try {
+        const parsedVideos = JSON.parse(saved);
+        // Migrate old transcript format to new format
+        const migratedVideos = parsedVideos.map((video: any) => {
+          if (video.transcript && video.transcript.length > 0) {
+            const firstChunk = video.transcript[0];
+            // Check if it's old format with timestamp array
+            if (firstChunk.timestamp && Array.isArray(firstChunk.timestamp)) {
+              return {
+                ...video,
+                transcript: video.transcript.map((chunk: any) => ({
+                  text: chunk.text,
+                  start: chunk.timestamp[0],
+                  duration: chunk.timestamp[1] - chunk.timestamp[0]
+                }))
+              };
+            }
+          }
+          return video;
+        });
+        setSavedVideos(migratedVideos);
+      } catch (error) {
+        console.error('Error loading saved videos:', error);
+        setSavedVideos([]);
+      }
+    }
+
+    // Load API key from localStorage
+    const savedApiKey = localStorage.getItem('openai-api-key');
+    if (savedApiKey) {
+      setApiKey(savedApiKey);
     }
   }, []);
 
   const generateSummary = async (text: string) => {
+    if (!apiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
+
     setIsSummarizing(true);
     setSummary('');
+    
+    const userOpenAI = new OpenAI({
+      apiKey: apiKey,
+      dangerouslyAllowBrowser: true
+    });
+
     const systemPrompt = selectedSummaryLanguage === 'en' 
       ? `You will receive a long transcript of a video or text content. Your task is to write a high-quality, structured summary of the content in English.`
       : `Вы получите длинную расшифровку видео или текстового контента. Ваша задача - написать качественное, структурированное резюме контента на русском языке.`;
@@ -189,7 +233,7 @@ Brief explanation of second key pattern or insight`
 Краткое объяснение второго ключевого паттерна`;
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await userOpenAI.chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [
           {
@@ -282,50 +326,19 @@ Brief explanation of second key pattern or insight`
       if (!videoId) throw new Error('Invalid YouTube URL');
 
       const response = await fetch(
-        `https://youtube-transcribe-fastest-youtube-transcriber.p.rapidapi.com/transcript?url=${encodeURIComponent(url)}&video_id=${videoId}`,
-        {
-          headers: {
-            'x-rapidapi-host': 'youtube-transcribe-fastest-youtube-transcriber.p.rapidapi.com',
-            'x-rapidapi-key': import.meta.env.VITE_RAPIDAPI_KEY
-          }
-        }
+        `https://web-production-8d29a.up.railway.app/transcript?video_id=${videoId}&lang=en`
       );
 
+      if (!response.ok) {
+        throw new Error('Failed to fetch transcript');
+      }
+
       const data = await response.json();
-      if (data.status === 'success') {
-        // Combine chunks into 30-second intervals
-        const combinedChunks: TranscriptChunk[] = [];
-        let currentChunk: TranscriptChunk = {
-          text: '',
-          timestamp: [0, 0]
-        };
-
-        data.data.chunks.forEach((chunk: TranscriptChunk) => {
-          const chunkDuration = chunk.timestamp[1] - chunk.timestamp[0];
-          const currentDuration = currentChunk.timestamp[1] - currentChunk.timestamp[0];
-
-          if (currentDuration + chunkDuration > 30 || currentChunk.text === '') {
-            if (currentChunk.text !== '') {
-              combinedChunks.push(currentChunk);
-            }
-            currentChunk = {
-              text: chunk.text,
-              timestamp: chunk.timestamp
-            };
-          } else {
-            currentChunk.text += ' ' + chunk.text;
-            currentChunk.timestamp[1] = chunk.timestamp[1];
-          }
-        });
-
-        if (currentChunk.text !== '') {
-          combinedChunks.push(currentChunk);
-        }
-
-        setTranscript(combinedChunks);
+      if (Array.isArray(data)) {
+        setTranscript(data);
         saveToLocalStorage({
           url,
-          transcript: combinedChunks
+          transcript: data
         });
       }
     } catch (error) {
@@ -348,15 +361,24 @@ Brief explanation of second key pattern or insight`
 
   const searchInTranscript = async () => {
     if (!searchQuery || transcript.length === 0) return;
+    if (!apiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
+    
+    const userOpenAI = new OpenAI({
+      apiKey: apiKey,
+      dangerouslyAllowBrowser: true
+    });
     
     setSearchResults([]);
     setIsSearching(true);
     try {
       const transcriptWithTimestamps = transcript.map(chunk => 
-        `[${formatTime(chunk.timestamp[0])}] ${chunk.text}`
+        `[${formatTime(chunk.start)}] ${chunk.text}`
       ).join('\n');
 
-      const response = await openai.chat.completions.create({
+      const response = await userOpenAI.chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [
           {
@@ -421,14 +443,31 @@ Brief explanation of second key pattern or insight`
     seekTo(totalSeconds);
   };
 
+  const saveApiKey = (key: string) => {
+    setApiKey(key);
+    localStorage.setItem('openai-api-key', key);
+    setShowApiKeyModal(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <main className="flex-1 p-8">
-        <div className="max-w-6xl mx-auto mb-8 text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">YouTube Transcriber AI</h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Transform any YouTube video into a searchable transcript with AI-powered summaries. Perfect for research, content creation, and learning.
-          </p>
+        <div className="max-w-6xl mx-auto mb-8">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-gray-900 mb-4">YouTube Transcriber AI</h1>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Transform any YouTube video into a searchable transcript with AI-powered summaries. Perfect for research, content creation, and learning.
+            </p>
+          </div>
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={() => setShowApiKeyModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <Brain size={16} />
+              {apiKey ? 'Изменить API ключ' : 'Настроить OpenAI API'}
+            </button>
+          </div>
         </div>
         <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Left Column */}
@@ -552,11 +591,11 @@ Brief explanation of second key pattern or insight`
                       {transcript.map((chunk, index) => (
                         <div
                           key={index}
-                          onClick={() => seekTo(chunk.timestamp[0])}
+                          onClick={() => seekTo(chunk.start)}
                           className="flex gap-4 text-sm group hover:bg-gray-50 p-2 rounded cursor-pointer transition-colors"
                         >
                           <span className="text-gray-500 whitespace-nowrap">
-                            {formatTime(chunk.timestamp[0])} - {formatTime(chunk.timestamp[1])}
+                            {formatTime(chunk.start)} - {formatTime(chunk.start + chunk.duration)}
                           </span>
                           <p className="flex-1">{chunk.text}</p>
                           <button
@@ -783,14 +822,21 @@ Brief explanation of second key pattern or insight`
             summary={summary}
             isOpen={chatOpen}
             onClose={() => setChatOpen(false)}
+            apiKey={apiKey}
           />
         </>
       )}
+      
+      <ApiKeyModal 
+        isOpen={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
+        onSave={saveApiKey}
+      />
     </div>
   );
 }
 
-const ChatWidget = ({ summary, isOpen, onClose }: { summary: string; isOpen: boolean; onClose: () => void }) => {
+const ChatWidget = ({ summary, isOpen, onClose, apiKey }: { summary: string; isOpen: boolean; onClose: () => void; apiKey: string }) => {
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([
     { role: 'assistant', content: 'Хотите обсудить summary?' }
   ]);
@@ -800,13 +846,18 @@ const ChatWidget = ({ summary, isOpen, onClose }: { summary: string; isOpen: boo
   const sendMessage = async (content: string) => {
     if (!content.trim()) return;
 
+    const userOpenAI = new OpenAI({
+      apiKey: apiKey,
+      dangerouslyAllowBrowser: true
+    });
+
     const newMessages = [...messages, { role: 'user', content }];
     setMessages(newMessages);
     setInput('');
     setIsLoading(true);
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await userOpenAI.chat.completions.create({
         model: 'gpt-4-turbo-preview',
         messages: [
           {
@@ -885,6 +936,79 @@ const ChatWidget = ({ summary, isOpen, onClose }: { summary: string; isOpen: boo
                 className="px-4 py-2 bg-blue-500 text-white rounded-lg disabled:bg-gray-300"
               >
                 Send
+              </button>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+};
+
+const ApiKeyModal = ({ isOpen, onClose, onSave }: { isOpen: boolean; onClose: () => void; onSave: (key: string) => void }) => {
+  const [key, setKey] = useState('');
+
+  const handleSave = () => {
+    if (key.trim()) {
+      onSave(key.trim());
+      setKey('');
+    }
+  };
+
+  return (
+    <Dialog.Root open={isOpen} onOpenChange={onClose}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-lg shadow-xl p-6">
+          <Dialog.Title className="text-xl font-semibold mb-4">Настройка OpenAI API</Dialog.Title>
+          
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-medium text-blue-800 mb-2">🔐 Конфиденциальность</h3>
+              <p className="text-sm text-blue-700">
+                Мы не сохраняем ваши API ключи или информацию о видео на наших серверах. 
+                Все данные хранятся локально в вашем браузере.
+              </p>
+            </div>
+
+            <div className="bg-gray-50 border rounded-lg p-4">
+              <h3 className="font-medium text-gray-800 mb-2">📝 Как получить API ключ:</h3>
+              <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                <li>Перейдите на <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">platform.openai.com/api-keys</a></li>
+                <li>Войдите в свой аккаунт OpenAI</li>
+                <li>Нажмите "Create new secret key"</li>
+                <li>Скопируйте ключ и вставьте его ниже</li>
+              </ol>
+            </div>
+
+            <div>
+              <label htmlFor="api-key" className="block text-sm font-medium text-gray-700 mb-2">
+                OpenAI API Key
+              </label>
+              <input
+                id="api-key"
+                type="password"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSave}
+                disabled={!key.trim()}
+                className="flex-1 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Сохранить
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Отмена
               </button>
             </div>
           </div>
