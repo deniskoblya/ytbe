@@ -842,7 +842,7 @@ Brief explanation of second key pattern or insight`
             rel="noopener noreferrer"
             className="text-blue-600 hover:underline"
           >
-            Denis Koblya
+            Denys Koblia
           </a>
         </p>
       </footer>
